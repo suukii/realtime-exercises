@@ -24,11 +24,55 @@ const server = http.createServer((request, response) => {
   });
 });
 
-/*
- *
- * your code goes here
- *
- */
+// handle the upgrade from http to ws
+server.on("upgrade", (req, socket) => {
+  if (req.headers["upgrade"] !== "websocket") {
+    // we only care about websockets
+    socket.end("HTTP/1.1 400 Bad Request");
+    return;
+  }
+  const acceptKey = req.headers["sec-websocket-key"];
+  const acceptValue = generateAcceptValue(acceptKey);
+  const headers = [
+    "HTTP/1.1 101 Web Socket Protocol Handshake",
+    "Upgrade: WebSocket",
+    "Connection: Upgrade",
+    `Sec-WebSocket-Accept: ${acceptValue}`,
+    "Sec-WebSocket-Protocol: json",
+    "\r\n",
+  ];
+
+  socket.write(headers.join("\r\n"));
+
+  // keep track of the connection
+  connections.push(socket);
+
+  // encode response data
+  socket.write(objToResponse({ msg: getMsgs() }));
+
+  socket.on("data", (buffer) => {
+    // decode the message send from the client
+    const message = parseMessage(buffer);
+    if (message) {
+      msg.push({
+        user: message.user,
+        text: message.text,
+        time: Date.now(),
+      });
+
+      // notify all users
+      connections.forEach((s) => s.write(objToResponse({ msg: getMsgs() })));
+    } else if (message === null) {
+      // remove from my active connections
+      socket.end();
+    }
+  });
+
+  socket.on("end", () => {
+    // stop tracking
+    connections = connections.filter((s) => s !== socket);
+  });
+});
 
 const port = process.env.PORT || 8080;
 server.listen(port, () =>
