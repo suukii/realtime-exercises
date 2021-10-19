@@ -32,11 +32,45 @@ async function postNewMsg(user, text) {
 }
 
 async function getNewMsgs() {
-  /*
-   *
-   * code goes here
-   *
-   */
+  // step1: get a readable stream from response body
+  let reader;
+  try {
+    const res = await fetch("/msgs");
+    reader = res.body.getReader();
+  } catch (e) {
+    console.error("connection error", e);
+  }
+
+  presence.innerText = "🟢";
+  let done = false;
+  // constantly read from the body stream
+  do {
+    // step2: read data from body read stream
+    let readerResponse;
+    try {
+      readerResponse = await reader.read();
+    } catch (e) {
+      console.error("reader failed", e);
+      presence.innerText = "🔴";
+      return;
+    }
+    done = readerResponse.done;
+
+    // step3: decode the data read from the body stream
+    const utf8Decoder = new TextDecoder("utf-8");
+    const chunk = utf8Decoder.decode(readerResponse.value, { stream: true });
+    if (chunk) {
+      try {
+        const json = JSON.parse(chunk);
+        allChat = json.msg;
+        render();
+      } catch (e) {
+        console.error("parse error", e);
+      }
+    }
+  } while (!done);
+
+  presence.innerText = "🔴";
 }
 
 function render() {
